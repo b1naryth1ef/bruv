@@ -69,7 +69,7 @@ class ShapedStorage:
     def __len__(self):
         return len(self._ids)
 
-    def has(self, entity_id: int):
+    def has(self, entity_id: int) -> bool:
         return entity_id in self._ids
 
     def get(self, entity_id: int, cls: Type[T]) -> T:
@@ -111,10 +111,10 @@ class EntityRef:
         self.storage = storage
         self.storage_index = storage_index
 
-    def has(self, cls):
+    def has(self, cls: Type[T]) -> bool:
         return cls in self.storage._component_classes
 
-    def get(self, cls):
+    def get(self, cls: Type[T]) -> T:
         return self.storage._datas[self.storage_index][
             self.storage._component_classes.index(cls)
         ]
