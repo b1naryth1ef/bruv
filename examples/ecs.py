@@ -2,7 +2,7 @@ import time
 from dataclasses import dataclass
 from typing import Tuple
 
-from bruv.ecs import Query, Simulation
+from bruv.ecs import Query, Simulation, TimingSystem
 
 
 @dataclass
@@ -32,6 +32,14 @@ class Debugging:
     pass
 
 
+sim = Simulation()
+
+# Systems are simply callables, but we can encapsulate their behavior and local
+#  (private) state within a class.
+sim.add_system(TimingSystem())
+
+
+@sim.add_system
 def update_positions(sim: Simulation):
     # We can execute basic queries to fetch components
     entities = sim.execute(Query[Tuple[Position, Velocity]])
@@ -46,26 +54,27 @@ def update_positions(sim: Simulation):
             print(f"Entity health is {entity.get(Health).value}")
 
 
-def remove_dead(sim: Simulation):
-    to_kill = []
-    for entity, (lifetime,) in sim.execute(Query[Tuple[Lifetime]]):
-        if lifetime.value <= sim.time:
-            to_kill.append(entity.id)
-
-    for entity_id in to_kill:
-        sim.remove_entity(entity_id)
-
-
+@sim.add_system
 def undebug(sim: Simulation):
     for entity, _ in sim.execute(Query[Tuple[Debugging]]):
         print(f"Remove debugging from {entity.id}")
         sim.remove_component(entity.id, Debugging)
 
 
-sim = Simulation()
-sim.add_system(update_positions)
-sim.add_system(remove_dead)
-sim.add_system(undebug)
+# Sometimes we want to share global state between systems, in this example
+#  we extract the current frame number from the result of the timing system. This
+#  data is automatically injected into our system execution call.
+@sim.add_system
+def remove_dead(sim: Simulation, timing: TimingSystem.Data):
+    for entity, (lifetime,) in sim.execute(Query[Tuple[Lifetime]]):
+        if lifetime.value <= timing.frame:
+            sim.remove_entity(entity.id)
+
+
+@sim.add_system
+def print_frame(sim: Simulation, timing: TimingSystem.Data):
+    print(f"Frame is {timing.frame}")
+
 
 bob = sim.create_entity(Position(), Velocity(x=1.0, y=1.0), Health(25))
 test = sim.create_entity(Position(), Velocity(), Lifetime(3))

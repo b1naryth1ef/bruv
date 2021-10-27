@@ -1,5 +1,8 @@
+import inspect
 import itertools
+import time
 import typing
+from collections import namedtuple
 from typing import (
     Any,
     Callable,
@@ -15,6 +18,14 @@ from typing import (
 )
 
 T = TypeVar("T")
+
+
+def _collect_system_dependencies(fn):
+    sig = inspect.signature(fn)
+    if not sig:
+        raise Exception(f"Unsupported system function: {fn!r}")
+
+    return set(sig.parameters.keys())
 
 
 class StorageIterator(Generic[T]):
@@ -106,6 +117,8 @@ class EntityRef:
 
 class System:
     def __init__(self, fn):
+        self.name = fn.__name__
+        self.dependencies = _collect_system_dependencies(fn)
         self._fn = fn
 
     def __call__(self, *args, **kwargs):
@@ -122,15 +135,14 @@ class Query(Generic[QueryDataT]):
 class Simulation:
     _entities: Set[int]
     _storage: Dict[Tuple, ShapedStorage]
-    _systems: List[System]
+    _systems: Dict[str, System]
     _entity_id_inc: int
 
     def __init__(self):
         self._entities = set()
         self._storage = {}
-        self._systems = []
+        self._systems = {}
         self._entity_id_inc = 0
-        self.time = 0
 
     def _next_entity_id(self) -> int:
         our_id = self._entity_id_inc
@@ -152,7 +164,7 @@ class Simulation:
 
     def add_system(self, fn: Callable[..., None]) -> System:
         new_system = System(fn)
-        self._systems.append(new_system)
+        self._systems[new_system.name] = new_system
         return new_system
 
     def add_component(self, entity_id, component):
@@ -202,16 +214,16 @@ class Simulation:
             raise Exception(f"No such entity {entity_id}")
 
     def tick(self):
-        for system in self._systems:
-            system(self)
+        system_results = {"sim": self}
+        for system in self._systems.values():
+            kwargs = {k: system_results[k] for k in system.dependencies}
+            system_results[system.name] = system(**kwargs)
 
         for id, storage in list(self._storage.items()):
             storage.prune()
 
             if len(storage) == 0:
                 del self._storage[id]
-
-        self.time += 1
 
     def execute(self, query: Type[Query[T]]) -> Iterator[Tuple[EntityRef, T]]:
         assert isinstance(query, typing._GenericAlias)
@@ -225,3 +237,23 @@ class Simulation:
         return itertools.chain.from_iterable(
             [StorageIterator(storage, components=components) for storage in storages]
         )
+
+
+class TimingSystem:
+    __name__ = "timing"
+
+    Data = namedtuple("Data", ["frame", "delta"])
+
+    def __init__(self):
+        self._last = 0
+        self._frame = 0
+
+    def __call__(self) -> Data:
+        self._frame += 1
+
+        delta = 0
+        if self._last:
+            delta = time.time() - self._last
+
+        self._last = time.time()
+        return TimingSystem.Data(self._frame, delta)
