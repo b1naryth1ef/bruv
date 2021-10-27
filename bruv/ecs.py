@@ -32,7 +32,7 @@ class StorageIterator(Generic[T]):
     def __init__(self, storage, components=None):
         self._storage = storage
         self._field_indexes_cache = [
-            storage._component_classes.index(i) for i in (components or [])
+            storage.component_classes.index(i) for i in (components or [])
         ]
         self._index = 0
         self._ref = EntityRef()
@@ -62,7 +62,7 @@ class StorageIterator(Generic[T]):
 
 class ShapedStorage:
     def __init__(self, component_classes: List[Any]):
-        self._component_classes = component_classes
+        self.component_classes = component_classes
         self._ids = []
         self._datas = []
 
@@ -74,7 +74,7 @@ class ShapedStorage:
 
     def get(self, entity_id: int, cls: Type[T]) -> T:
         return self._datas[self._ids.index(entity_id)][
-            self._component_classes.index(cls)
+            self.component_classes.index(cls)
         ]
 
     def prune(self):
@@ -83,9 +83,9 @@ class ShapedStorage:
             self._datas = [i for i in self._datas if i is not None]
 
     def insert(self, entity_id, data):
-        sorted_data = [None] * len(self._component_classes)
+        sorted_data = [None] * len(self.component_classes)
         for value in data:
-            sorted_data[self._component_classes.index(value.__class__)] = value
+            sorted_data[self.component_classes.index(value.__class__)] = value
 
         self._ids.append(entity_id)
         self._datas.append(sorted_data)
@@ -112,11 +112,11 @@ class EntityRef:
         self.storage_index = storage_index
 
     def has(self, cls: Type[T]) -> bool:
-        return cls in self.storage._component_classes
+        return cls in self.storage.component_classes
 
     def get(self, cls: Type[T]) -> T:
         return self.storage._datas[self.storage_index][
-            self.storage._component_classes.index(cls)
+            self.storage.component_classes.index(cls)
         ]
 
 
@@ -158,7 +158,7 @@ class Simulation:
         return [
             storage
             for storage in self._storage.values()
-            if all(i in storage._component_classes for i in classes)
+            if all(i in storage.component_classes for i in classes)
         ]
 
     def _get_or_create_storage(self, classes) -> ShapedStorage:
@@ -239,7 +239,7 @@ class Simulation:
     def get_entity_component(self, entity_id: int, cls: Type[T]) -> Optional[T]:
         for storage in self._storage.values():
             if storage.has(entity_id):
-                if cls in storage._component_classes:
+                if cls in storage.component_classes:
                     return storage.get(entity_id, cls)
         return None
 
