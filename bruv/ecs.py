@@ -72,6 +72,11 @@ class ShapedStorage:
     def has(self, entity_id: int):
         return entity_id in self._ids
 
+    def get(self, entity_id: int, cls: Type[T]) -> T:
+        return self._datas[self._ids.index(entity_id)][
+            self._component_classes.index(cls)
+        ]
+
     def prune(self):
         if None in self._ids:
             self._ids = [i for i in self._ids if i is not None]
@@ -101,10 +106,10 @@ class EntityRef:
     storage: ShapedStorage
     storage_index: int
 
-    def __init__(self):
-        self.id = 0
-        self.storage = None
-        self.storage_index = 0
+    def __init__(self, entity_id=0, storage=None, storage_index=0):
+        self.id = entity_id
+        self.storage = storage
+        self.storage_index = storage_index
 
     def has(self, cls):
         return cls in self.storage._component_classes
@@ -224,6 +229,19 @@ class Simulation:
 
             if len(storage) == 0:
                 del self._storage[id]
+
+    def get_entity(self, entity_id: int) -> Optional[EntityRef]:
+        for storage in self._storage.values():
+            if storage.has(entity_id):
+                return EntityRef(entity_id, storage, storage._ids.index(entity_id))
+        return None
+
+    def get_entity_component(self, entity_id: int, cls: Type[T]) -> Optional[T]:
+        for storage in self._storage.values():
+            if storage.has(entity_id):
+                if cls in storage._component_classes:
+                    return storage.get(entity_id, cls)
+        return None
 
     def execute(self, query: Type[Query[T]]) -> Iterator[Tuple[EntityRef, T]]:
         assert isinstance(query, typing._GenericAlias)

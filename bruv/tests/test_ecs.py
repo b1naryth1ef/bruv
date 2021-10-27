@@ -30,6 +30,12 @@ def test_basic_component(sim: Simulation, entity: int):
     result = sim.execute(Query[Tuple[BasicComponent]])
     assert len(list(result)) == 1
 
+    ref = sim.get_entity(entity)
+    assert ref.has(BasicComponent)
+    assert ref.get(BasicComponent).x == 0
+
+    assert sim.get_entity_component(entity, BasicComponent).x == 0
+
 
 @dataclass
 class XComponent:
