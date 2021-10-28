@@ -3,10 +3,12 @@ import itertools
 import time
 import typing
 from collections import namedtuple
+from enum import IntEnum, auto
 from typing import (
     Any,
     Callable,
     Dict,
+    Generator,
     Generic,
     Iterator,
     List,
@@ -137,17 +139,31 @@ class Query(Generic[QueryDataT]):
     pass
 
 
+class MutationType(IntEnum):
+    CREATE = auto()
+    DELETE = auto()
+    ADD_COMPONENT = auto()
+    REMOVE_COMPONENT = auto()
+
+
+Mutation = namedtuple("Mutation", ["entity_id", "type", "data"])
+
+
 class Simulation:
     _entities: Set[int]
     _storage: Dict[Tuple, ShapedStorage]
     _systems: Dict[str, System]
     _entity_id_inc: int
+    _mutations: List[Mutation]
+    _previous_mutations: Optional[List[Mutation]]
 
     def __init__(self):
         self._entities = set()
         self._storage = {}
         self._systems = {}
         self._entity_id_inc = 0
+        self._mutations = []
+        self._previous_mutations = []
 
     def _next_entity_id(self) -> int:
         our_id = self._entity_id_inc
@@ -186,6 +202,9 @@ class Simulation:
         components.append(component)
         storage = self._get_or_create_storage(tuple(i.__class__ for i in components))
         storage.insert(entity_id, components)
+        self._mutations.append(
+            Mutation(entity_id, MutationType.ADD_COMPONENT, component)
+        )
 
     def remove_component(self, entity_id, cls):
         components = None
@@ -197,9 +216,15 @@ class Simulation:
         else:
             raise Exception(f"No such entity {entity_id}")
 
+        component = next((i for i in components if i.__class__ == cls), None)
+        if component is None:
+            return
         components = [i for i in components if i.__class__ != cls]
         storage = self._get_or_create_storage(tuple(i.__class__ for i in components))
         storage.insert(entity_id, components)
+        self._mutations.append(
+            Mutation(entity_id, MutationType.REMOVE_COMPONENT, component)
+        )
 
     def create_entity(self, *components) -> int:
         entity_id = self._next_entity_id()
@@ -208,17 +233,24 @@ class Simulation:
         storage = self._get_or_create_storage(tuple(i.__class__ for i in components))
         storage.insert(entity_id, components)
 
+        self._mutations.append(Mutation(entity_id, MutationType.CREATE, components))
+
         return entity_id
 
     def remove_entity(self, entity_id: int):
         for storage in self._storage.values():
             if storage.has(entity_id):
-                storage.pop(entity_id)
+                self._mutations.append(
+                    Mutation(entity_id, MutationType.DELETE, storage.pop(entity_id))
+                )
                 return
         else:
             raise Exception(f"No such entity {entity_id}")
 
     def tick(self):
+        self._previous_mutations = self._mutations
+        self._mutations = []
+
         system_results = {"sim": self}
         for system in self._systems.values():
             kwargs = {k: system_results[k] for k in system.dependencies}
@@ -242,6 +274,20 @@ class Simulation:
                 if cls in storage.component_classes:
                     return storage.get(entity_id, cls)
         return None
+
+    def get_entity_mutations(self, entity_id: int) -> Generator[Mutation, None, None]:
+        for mutation in self._previous_mutations:
+            if mutation.entity_id == entity_id:
+                yield mutation
+
+    def get_component_mutations(self, cls: Type[T]) -> Generator[Mutation, None, None]:
+        for mutation in self._previous_mutations:
+            if mutation.type in (MutationType.CREATE, MutationType.DELETE):
+                if any(isinstance(i, cls) for i in mutation.data):
+                    yield mutation
+            else:
+                if isinstance(mutation.data, cls):
+                    yield mutation
 
     def execute(self, query: Type[Query[T]]) -> Iterator[Tuple[EntityRef, T]]:
         assert isinstance(query, typing._GenericAlias)

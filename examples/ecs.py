@@ -2,7 +2,7 @@ import time
 from dataclasses import dataclass
 from typing import Tuple
 
-from bruv.ecs import Query, Simulation, TimingSystem
+from bruv.ecs import MutationType, Query, Simulation, TimingSystem
 
 
 @dataclass
@@ -74,6 +74,15 @@ def remove_dead(sim: Simulation, timing: TimingSystem.Data):
 @sim.add_system
 def print_frame(sim: Simulation, timing: TimingSystem.Data):
     print(f"Frame is {timing.frame}")
+
+
+# Adding/removing entities and components are tracked within a frame, and can be
+#  queried as "mutations" within the next frame.
+@sim.add_system
+def track_debug_objects(sim: Simulation):
+    for mutation in sim.get_component_mutations(Debugging):
+        if mutation.type in (MutationType.REMOVE_COMPONENT, MutationType.DELETE):
+            print(f"Debugging was disabled on entity {mutation.entity_id}")
 
 
 bob = sim.create_entity(Position(), Velocity(x=1.0, y=1.0), Health(25))
