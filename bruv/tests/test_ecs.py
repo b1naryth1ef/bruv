@@ -93,7 +93,7 @@ def test_multiple_component_multiple_entity(sim: Simulation):
 def test_mutations(sim: Simulation, entity):
     sim.add_component(entity, XComponent())
     sim.add_component(entity, YComponent())
-    sim.remove_component(entity, YComponent())
+    sim.remove_component(entity, YComponent)
     sim.tick()
     assert len(list(sim.get_component_mutations(XComponent))) == 1
     assert len(list(sim.get_component_mutations(YComponent))) == 2

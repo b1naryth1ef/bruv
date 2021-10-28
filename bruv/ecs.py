@@ -218,7 +218,7 @@ class Simulation:
 
         component = next((i for i in components if i.__class__ == cls), None)
         if component is None:
-            return
+            raise Exception(f"entity {entity_id} does not have component {cls!r}")
         components = [i for i in components if i.__class__ != cls]
         storage = self._get_or_create_storage(tuple(i.__class__ for i in components))
         storage.insert(entity_id, components)
@@ -234,14 +234,25 @@ class Simulation:
         storage.insert(entity_id, components)
 
         self._mutations.append(Mutation(entity_id, MutationType.CREATE, components))
+        self._mutations.extend(
+            [
+                Mutation(entity_id, MutationType.ADD_COMPONENT, component)
+                for component in components
+            ]
+        )
 
         return entity_id
 
     def remove_entity(self, entity_id: int):
         for storage in self._storage.values():
             if storage.has(entity_id):
+                components = storage.pop(entity_id)
                 self._mutations.append(
-                    Mutation(entity_id, MutationType.DELETE, storage.pop(entity_id))
+                    Mutation(entity_id, MutationType.DELETE, components)
+                )
+                self._mutations.extend(
+                    Mutation(entity_id, MutationType.REMOVE_COMPONENT, component)
+                    for component in components
                 )
                 return
         else:
@@ -282,12 +293,15 @@ class Simulation:
 
     def get_component_mutations(self, cls: Type[T]) -> Generator[Mutation, None, None]:
         for mutation in self._previous_mutations:
-            if mutation.type in (MutationType.CREATE, MutationType.DELETE):
-                if any(isinstance(i, cls) for i in mutation.data):
-                    yield mutation
-            else:
-                if isinstance(mutation.data, cls):
-                    yield mutation
+            if (
+                mutation.type
+                in (
+                    MutationType.ADD_COMPONENT,
+                    MutationType.REMOVE_COMPONENT,
+                )
+                and isinstance(mutation.data, cls)
+            ):
+                yield mutation
 
     def execute(self, query: Type[Query[T]]) -> Iterator[Tuple[EntityRef, T]]:
         assert isinstance(query, typing._GenericAlias)
